@@ -5,8 +5,14 @@
 #include <SPI.h>
 #include <DHT.h>
 
+#define BATPIN A7     //Battery level pin
+#define ACTIVEPIN 11   //Activity LED pin
 #define DHTPIN 10    // what pin we're connected to
 #define DHTTYPE DHT22   // DHT 22  (AM2302)
+
+//# of bytes in the payload
+#define PAYLOAD_SIZE 12
+
 
 DHT dht(DHTPIN, DHTTYPE);
 
@@ -27,7 +33,8 @@ void os_getDevEui (u1_t* buf) { memcpy_P(buf, DEVEUI, 8);}
 static const u1_t PROGMEM APPKEY[16] = { 0xD9, 0x8F, 0x39, 0x93, 0xDA, 0x77, 0x7D, 0x32, 0xF5, 0x29, 0x93, 0x9F, 0xD8, 0x3C, 0x1C, 0xB0 };
 void os_getDevKey (u1_t* buf) {  memcpy_P(buf, APPKEY, 16);}
 
-static byte data[];
+//Array to hold data
+static uint8_t* data;
 static osjob_t sendjob;
 
 // Schedule TX every this many seconds (might become longer due to duty
@@ -138,25 +145,37 @@ void onEvent (ev_t ev) {
 }
 
 void do_send(osjob_t* j){
+  digitalWrite(ACTIVEPIN, HIGH);
     // Check if there is not a current TX/RX job running
     if (LMIC.opmode & OP_TXRXPEND) {
         Serial.println(F("OP_TXRXPEND, not sending"));
     } else {
+      Serial.print(F("Sending Data:"));
+      Serial.print(dht.readTemperature());
+      Serial.print(",");
+      Serial.print(dht.readHumidity());
         // Prepare upstream data transmission at the next possible time.
-        LMIC_setTxData2(1, data, sizeof(data)-1, 0);
+        LMIC_setTxData2(1, data, PAYLOAD_SIZE, 0);   //8 bytes being sent
         Serial.println(F("Packet queued"));
     }
     // Next TX is scheduled after TX_COMPLETE event.
+    digitalWrite(ACTIVEPIN, LOW);
 }
 
 void setup() {
+  pinMode(ACTIVEPIN, OUTPUT);
+  //pinMode(BATPIN, INPUT);
+  digitalWrite(ACTIVEPIN, HIGH);
+  data = (uint8_t*) calloc(PAYLOAD_SIZE, sizeof(uint8_t));
     delay(5000);
     while (! Serial)
         ;
     Serial.begin(9600);
     Serial.println(F("Starting"));
 
-    dht.init();
+    
+
+    dht.begin();
 
     // LMIC init
     os_init();
@@ -167,11 +186,28 @@ void setup() {
     LMIC_setDrTxpow(DR_SF7,14);
     LMIC_selectSubBand(1);
 
-    // Start job (sending automatically starts OTAA too)
+    // Start job (sending automatically starts OTAA too)    
     do_send(&sendjob);
+    digitalWrite(ACTIVEPIN, LOW);
+}
+
+void collectData() {
+  float2bytes(dht.readHumidity(), (void*) data);
+  float2bytes(dht.readTemperature(), (void*) (data + 4));
+
+  float batV = analogRead(BATPIN);
+  batV *= 2;
+  batV *= 3.3;
+  batV /= 1024;
+  
+  float2bytes(batV, (void*) (data + 8));
+}
+
+void float2bytes(float input, void* outputLocation) {
+  memcpy(outputLocation, (void*) &input, sizeof(float));
 }
 
 void loop() {
-  
+    collectData();
     os_runloop_once();
 }
