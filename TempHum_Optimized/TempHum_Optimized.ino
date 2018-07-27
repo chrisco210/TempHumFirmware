@@ -1,4 +1,4 @@
-//#include <Adafruit_SleepyDog.h>
+#include <Adafruit_SleepyDog.h>
 #include <Mouse.h>
 
 #include <lmic.h>
@@ -82,7 +82,7 @@ void onEvent (ev_t ev) {
             }
             // Schedule next transmission
             os_setTimedCallback(&sendjob, os_getTime() + sec2osticks(TX_INTERVAL), do_send);
-            //Watchdog.sleep(270000);   //4.5 min
+            Watchdog.sleep(270000);   //4.5 min
             break;
             break;
          default:
