@@ -1,3 +1,4 @@
+//#include <Adafruit_SleepyDog.h>
 #include <Mouse.h>
 
 #include <lmic.h>
@@ -41,7 +42,7 @@ static osjob_t sendjob;
 // Schedule TX every this many seconds (might become longer due to duty
 // cycle limitations).
 // USE THIS TO CHANGE INTERVAL
-const unsigned TX_INTERVAL = 10;   //5min
+const unsigned TX_INTERVAL = 300;   //5min
 
 // Pin mapping
 const lmic_pinmap lmic_pins = {
@@ -50,68 +51,25 @@ const lmic_pinmap lmic_pins = {
     .rst = 4,
     .dio = {3, 5, 6},
 };
-
-//Event handler provided by https://github.com/matthijskooijman/arduino-lmic/blob/master/examples/ttn-abp/ttn-abp.ino
+//Event handler based on https://github.com/matthijskooijman/arduino-lmic/blob/master/examples/ttn-abp/ttn-abp.ino
+//Many events have been removed, you may want to re add them if you are having issues
 void onEvent (ev_t ev) {
     Serial.print(os_getTime());
     Serial.print(": ");
     switch(ev) {
-        case EV_SCAN_TIMEOUT:
-            Serial.println(F("EV_SCAN_TIMEOUT"));
-            break;
-        case EV_BEACON_FOUND:
-            Serial.println(F("EV_BEACON_FOUND"));
-            break;
-        case EV_BEACON_MISSED:
-            Serial.println(F("EV_BEACON_MISSED"));
-            break;
-        case EV_BEACON_TRACKED:
-            Serial.println(F("EV_BEACON_TRACKED"));
-            break;
-        case EV_JOINING:
-            Serial.println(F("EV_JOINING"));
-            break;
         case EV_JOINED:
             Serial.println(F("EV_JOINED"));
             {
-              u4_t netid = 0;
-              devaddr_t devaddr = 0;
-              u1_t nwkKey[16];
-              u1_t artKey[16];
-              LMIC_getSessionKeys(&netid, &devaddr, nwkKey, artKey);
-              Serial.print("netid: ");
-              Serial.println(netid, DEC);
-              Serial.print("devaddr: ");
-              Serial.println(devaddr, HEX);
-              Serial.print("artKey: ");
-              for (int i=0; i<sizeof(artKey); ++i) {
-                if (i != 0)
-                  Serial.print("-");
-                Serial.print(artKey[i], HEX);
-              }
-              Serial.println("");
-              Serial.print("nwkKey: ");
-              for (int i=0; i<sizeof(nwkKey); ++i) {
-                      if (i != 0)
-                              Serial.print("-");
-                      Serial.print(nwkKey[i], HEX);
-              }
-              Serial.println("");
-            }
+            u4_t netid = 0;
+            devaddr_t devaddr = 0;
+            u1_t nwkKey[16];
+            u1_t artKey[16];
+            LMIC_getSessionKeys(&netid, &devaddr, nwkKey, artKey);
             // Disable link check validation (automatically enabled
             // during join, but because slow data rates change max TX
-	    // size, we don't use it in this example.
+            // size, we don't use it in this example.
             LMIC_setLinkCheckMode(0);
-            break;
-        case EV_RFU1:
-            Serial.println(F("EV_RFU1"));
-            break;
-        case EV_JOIN_FAILED:
-            Serial.println(F("EV_JOIN_FAILED"));
-            break;
-        case EV_REJOIN_FAILED:
-            Serial.println(F("EV_REJOIN_FAILED"));
-            break;
+            }
             break;
         case EV_TXCOMPLETE:
             Serial.println(F("EV_TXCOMPLETE (includes waiting for RX windows)"));
@@ -123,29 +81,17 @@ void onEvent (ev_t ev) {
               Serial.println(F(" bytes of payload"));
             }
             // Schedule next transmission
-            os_setTimedCallback(&sendjob, os_getTime()+sec2osticks(TX_INTERVAL), do_send);
+            os_setTimedCallback(&sendjob, os_getTime() + sec2osticks(TX_INTERVAL), do_send);
+            //Watchdog.sleep(270000);   //4.5 min
             break;
-        case EV_LOST_TSYNC:
-            Serial.println(F("EV_LOST_TSYNC"));
-            break;
-        case EV_RESET:
-            Serial.println(F("EV_RESET"));
-            break;
-        case EV_RXCOMPLETE:
-            // data received in ping slot
-            Serial.println(F("EV_RXCOMPLETE"));
-            break;
-        case EV_LINK_DEAD:
-            Serial.println(F("EV_LINK_DEAD"));
-            break;
-        case EV_LINK_ALIVE:
-            Serial.println(F("EV_LINK_ALIVE"));
             break;
          default:
-            Serial.println(F("Unknown event"));
+            Serial.print(F("Event Received: "));
+            Serial.println(ev);
             break;
     }
 }
+
 
 /*
  * This function actually sends the data to the gateway
@@ -162,31 +108,6 @@ void do_send(osjob_t* j){
         Serial.println(F("Packet queued"));
     }
     // Next TX is scheduled after TX_COMPLETE event.
-}
-
-void setup() {
-    data = (uint8_t*) calloc(PAYLOAD_SIZE, sizeof(uint8_t));    //Allocate the required number of bytes for the payload
-    delay(5000);
-    while (! Serial)
-        ;
-    Serial.begin(9600);
-    Serial.println(F("Starting"));
-
-    
-
-    dht.begin();
-
-    // LMIC init
-    os_init();
-    // Reset the MAC state. Session and pending data transfers will be discarded.
-    LMIC_reset();
-
-    LMIC_setLinkCheckMode(0);
-    LMIC_setDrTxpow(DR_SF7,14);
-    LMIC_selectSubBand(1);
-    
-    // Start job (sending automatically starts OTAA too)    
-    do_send(&sendjob);
 }
 
 /*
@@ -212,6 +133,29 @@ void float2bytes(float input, void* outputLocation) {
   memcpy(outputLocation, (void*) &input, sizeof(float));
 }
 
+void setup() {
+  // put your setup code here, to r un once:
+  data = (uint8_t*) calloc(PAYLOAD_SIZE, sizeof(uint8_t));    //Allocate the required number of bytes for the payload
+    delay(5000);
+    while (! Serial)
+        ;
+    Serial.begin(9600);
+    Serial.println(F("Starting"));
+    dht.begin();
+
+    // LMIC init
+    os_init();
+    // Reset the MAC state. Session and pending data transfers will be discarded.
+    LMIC_reset();
+
+    LMIC_setLinkCheckMode(0);
+    LMIC_setDrTxpow(DR_SF7,14);
+    LMIC_selectSubBand(1);
+    
+    // Start job (sending automatically starts OTAA too)    
+    do_send(&sendjob);
+}
+
 void loop() {
-    os_runloop_once();
+  os_runloop_once();
 }
