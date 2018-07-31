@@ -167,8 +167,6 @@ void do_send(osjob_t* j){
 void setup() {
     data = (uint8_t*) calloc(PAYLOAD_SIZE, sizeof(uint8_t));    //Allocate the required number of bytes for the payload
     delay(5000);
-    while (! Serial)
-        ;
     Serial.begin(9600);
     Serial.println(F("Starting"));
 
