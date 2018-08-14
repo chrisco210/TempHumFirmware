@@ -1,10 +1,6 @@
 #include <OneWire.h>
-
-#define SHUTDOWN_PIN 11
-#define DS18S20_Pin 10 
-
-#include <Adafruit_SleepyDog.h>
-#include <Mouse.h>
+#define SHUTDOWN_PIN 23
+#define DS18S20_Pin 19
 
 #include <lmic.h>
 #include <hal/hal.h>
@@ -16,6 +12,8 @@
 
 //# of bytes in the payload
 #define PAYLOAD_SIZE 8
+
+LMIC_getSessionKeys(&netid, &devaddr, nwkKey, artKey);
 
 // This EUI must be in little-endian format, so least-significant-byte
 // first. When copying an EUI from ttnctl output, this means to reverse
@@ -45,11 +43,22 @@ static osjob_t sendjob;
 const unsigned TX_INTERVAL = 300;   //5min
 
 // Pin mapping
+/*
+//Feather M0
 const lmic_pinmap lmic_pins = {
     .nss = 8,
     .rxtx = LMIC_UNUSED_PIN,
     .rst = 4,
     .dio = {3, 5, 6},
+};
+*/
+
+//Heltec esp32
+const lmic_pinmap lmic_pins = {
+    .nss = 18,
+    .rxtx = LMIC_UNUSED_PIN,
+    .rst = 14,
+    .dio = {26, 33, 32},
 };
 
 unsigned long startTime;
@@ -57,7 +66,7 @@ unsigned long startTime;
 OneWire ds(DS18S20_Pin);  // on digital pin 2
 
 void setup(void) {
-    Serial.begin(9600);
+    Serial.begin(115000);
     delay(5000);
     
     
@@ -67,16 +76,22 @@ void setup(void) {
       // put your setup code here, to r un once:
     pinMode(SHUTDOWN_PIN, OUTPUT);
     data = (uint8_t*) calloc(PAYLOAD_SIZE, sizeof(uint8_t));    //Allocate the required number of bytes for the payload
-  
+
+    Serial.println("os_init");
     // LMIC init
     os_init();
+    Serial.println("LMIC_reset");
     // Reset the MAC state. Session and pending data transfers will be discarded.
     LMIC_reset();
 
+    Serial.println("setLinkCheckMode");
     LMIC_setLinkCheckMode(0);
+    Serial.println("setDrTxpow");
     LMIC_setDrTxpow(DR_SF7,14);
+    Serial.println("selectSubBand");
     LMIC_selectSubBand(1);
-    
+
+    Serial.println("do_send");
     // Start job (sending automatically starts OTAA too)    
     do_send(&sendjob);
     
@@ -91,7 +106,18 @@ void loop(void) {
 void onEvent (ev_t ev) {
     if(ev == EV_TXCOMPLETE) {
       powerDown();
-    }
+    } else if(ev == EV_JOINED ) {
+            Serial.println(F("EV_JOINED"));
+            u4_t netid = 0;
+            devaddr_t devaddr = 0;
+            u1_t nwkKey[16];
+            u1_t artKey[16];
+            LMIC_getSessionKeys(&netid, &devaddr, nwkKey, artKey);
+            // Disable link check validation (automatically enabled
+            // during join, but because slow data rates change max TX
+            // size, we don't use it in this example.
+            LMIC_setLinkCheckMode(0);
+  }
 }
 
 void powerDown() {
@@ -103,8 +129,21 @@ void powerDown() {
  * This function actually sends the data to the gateway
  */
 void do_send(osjob_t* j){
-  collectData();    //Gather the data to be sent
+// Check if there is not a current TX/RX job running
+    Serial.println("Checking");
+    if (LMIC.opmode & OP_TXRXPEND) {
+        Serial.println(F("OP_TXRXPEND, not sending"));
+    } else {
+        Serial.println("Collecting data");
+        // Prepare upstream data transmission at the next possible time.
+        collectData();    //Gather the data to be sent
+          Serial.println("Sending");
   LMIC_setTxData2(1, data, PAYLOAD_SIZE, 0);   //PAYLOAD_SIZE bytes being sent
+        Serial.println(F("Packet queued"));
+    }
+
+  
+  
 }
 
 /*
@@ -163,6 +202,9 @@ float getTemp(){
 
   float tempRead = ((MSB << 8) | LSB); //using two's compliment
   float TemperatureSum = tempRead / 16;
+
+  Serial.print("TEMP: ");
+  Serial.println(TemperatureSum);
   
   return TemperatureSum;
   
