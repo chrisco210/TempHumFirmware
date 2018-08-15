@@ -1,6 +1,6 @@
 #include <OneWire.h>
 #define SHUTDOWN_PIN 23
-#define DS18S20_Pin 19
+#define DS18S20_Pin 17
 
 #include <lmic.h>
 #include <hal/hal.h>
@@ -13,9 +13,8 @@
 //# of bytes in the payload
 #define PAYLOAD_SIZE 8
 
-LMIC_getSessionKeys(&netid, &devaddr, nwkKey, artKey);
 
-// This EUI must be in little-endian format, so least-significant-byte
+// This EUI must be in little-endian format, so least-signif  icant-byte
 // first. When copying an EUI from ttnctl output, this means to reverse
 // the bytes. For TTN issued EUIs the last bytes should be 0xD5, 0xB3,
 // 0x70.
@@ -86,7 +85,7 @@ void setup(void) {
 
     Serial.println("setLinkCheckMode");
     LMIC_setLinkCheckMode(0);
-    Serial.println("setDrTxpow");
+    Serial.println("setDrTxpow");   
     LMIC_setDrTxpow(DR_SF7,14);
     Serial.println("selectSubBand");
     LMIC_selectSubBand(1);
@@ -136,7 +135,10 @@ void do_send(osjob_t* j){
     } else {
         Serial.println("Collecting data");
         // Prepare upstream data transmission at the next possible time.
-        collectData();    //Gather the data to be sent
+        for(int i = 0; i < 10; i++) {
+          collectData();    //Gather the data to be sent          
+        }
+
           Serial.println("Sending");
   LMIC_setTxData2(1, data, PAYLOAD_SIZE, 0);   //PAYLOAD_SIZE bytes being sent
         Serial.println(F("Packet queued"));
@@ -151,15 +153,6 @@ void do_send(osjob_t* j){
  */
 void collectData() {
   float2bytes(getTemp(), (void*) (data));
-
-  
-  float batV = analogRead(BATPIN);
-  batV *= 2;    
-  batV *= 3.3;
-  batV /= 1024;
-  
-  float2bytes(batV, (void*) (data));
-  
 }
 
 /*
