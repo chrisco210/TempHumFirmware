@@ -1,17 +1,18 @@
 #include <OneWire.h>
 #define SHUTDOWN_PIN 23
 #define DS18S20_Pin 17
-
+#include <U8g2lib.h>
 #include <lmic.h>
 #include <hal/hal.h>
 #include <SPI.h>
+
 
 #define BATPIN A7     //Battery level pin
 #define ACTIVEPIN 11   //Activity LED pin
 #define DHTPIN 10    // what pin we're connected to
 
 //# of bytes in the payload
-#define PAYLOAD_SIZE 8
+#define PAYLOAD_SIZE 4
 
 
 // This EUI must be in little-endian format, so least-signif  icant-byte
@@ -63,34 +64,48 @@ const lmic_pinmap lmic_pins = {
 unsigned long startTime;
 //Temperature chip i/o
 OneWire ds(DS18S20_Pin);  // on digital pin 2
+U8X8_SSD1306_128X64_NONAME_SW_I2C u8x8(/* clock=*/ 15, /* data=*/ 4, /* reset=*/ 16);
 
 void setup(void) {
-    Serial.begin(115000);
-    delay(5000);
+  //digitalWrite(SHUTDOWN_PIN, LOW);
+  //pinMode(SHUTDOWN_PIN, OUTPUT);
+  
+
+  
+  Serial.begin(115200);
     
     
     Serial.println("Starting");
+    
     startTime = millis();
-
-      // put your setup code here, to r un once:
-    pinMode(SHUTDOWN_PIN, OUTPUT);
+    u8x8.begin();
+  u8x8.setFont(u8x8_font_chroma48medium8_r);
+  u8x8.drawString(0, 0, "Starting");
+            // put your setup code here, to r un once:
+    
     data = (uint8_t*) calloc(PAYLOAD_SIZE, sizeof(uint8_t));    //Allocate the required number of bytes for the payload
 
     Serial.println("os_init");
+    u8x8.drawString(0, 0, "os_init");
     // LMIC init
     os_init();
     Serial.println("LMIC_reset");
+    u8x8.drawString(0, 0, "LMIC reset");
     // Reset the MAC state. Session and pending data transfers will be discarded.
     LMIC_reset();
 
     Serial.println("setLinkCheckMode");
+    u8x8.drawString(0, 0, "setLinkCheckMode");
     LMIC_setLinkCheckMode(0);
     Serial.println("setDrTxpow");   
+    u8x8.drawString(0, 0, "setDrTxpow");
     LMIC_setDrTxpow(DR_SF7,14);
     Serial.println("selectSubBand");
+    u8x8.drawString(0, 0, "selectSubBand");
     LMIC_selectSubBand(1);
 
     Serial.println("do_send");
+    u8x8.drawString(0, 0, "do_send");
     // Start job (sending automatically starts OTAA too)    
     do_send(&sendjob);
     
@@ -104,9 +119,11 @@ void loop(void) {
 
 void onEvent (ev_t ev) {
     if(ev == EV_TXCOMPLETE) {
+      u8x8.drawString(0, 0, "EV_TXCOMPLETE");
       powerDown();
     } else if(ev == EV_JOINED ) {
             Serial.println(F("EV_JOINED"));
+            u8x8.drawString(0, 0, "EV_JOINED");
             u4_t netid = 0;
             devaddr_t devaddr = 0;
             u1_t nwkKey[16];
@@ -120,9 +137,14 @@ void onEvent (ev_t ev) {
 }
 
 void powerDown() {
-  digitalWrite(SHUTDOWN_PIN, HIGH);
+  
+  
   Serial.println(millis() - startTime);
   Serial.println("Finished");
+  u8x8.drawString(0, 0, "Finished. Shutdown");
+  
+  digitalWrite(SHUTDOWN_PIN, LOW);
+  pinMode(SHUTDOWN_PIN, OUTPUT);
 }
 /*
  * This function actually sends the data to the gateway
@@ -132,16 +154,21 @@ void do_send(osjob_t* j){
     Serial.println("Checking");
     if (LMIC.opmode & OP_TXRXPEND) {
         Serial.println(F("OP_TXRXPEND, not sending"));
+        u8x8.drawString(0, 0, "OP_TXRXPEND, no send");
     } else {
         Serial.println("Collecting data");
+        u8x8.drawString(0, 0, "Collecting Data");
         // Prepare upstream data transmission at the next possible time.
-        for(int i = 0; i < 10; i++) {
-          collectData();    //Gather the data to be sent          
+        for(int i = 0; i < 30; i++) {
+          collectData();
         }
+        
 
           Serial.println("Sending");
+          u8x8.drawString(0, 0, "Sending");
   LMIC_setTxData2(1, data, PAYLOAD_SIZE, 0);   //PAYLOAD_SIZE bytes being sent
         Serial.println(F("Packet queued"));
+        u8x8.drawString(0, 0, "Packet Queued");
     }
 
   
@@ -152,6 +179,10 @@ void do_send(osjob_t* j){
  * Collect data from sensors and battery and place it in the output pointer to be sent
  */
 void collectData() {
+  //int temp = (int) getTemp();
+  //memcpy((void*) data, (void*) &temp, sizeof(int));
+  
+  
   float2bytes(getTemp(), (void*) (data));
 }
 
@@ -159,12 +190,12 @@ void collectData() {
  * Convert a floating point number to 4 bytes at the output location provided
  * Uses memcopy, so don't have the output location be the same as the location of the input float
  */
-void float2bytes(float input, void* outputLocation) {
-  memcpy(outputLocation, (void*) &input, sizeof(float));
+void float2bytes(int input, void* outputLocation) {
+  memcpy(outputLocation, (void*) &input, sizeof(int));
 }
 
 //From sensor library example, am not touching
-float getTemp(){
+int getTemp(){
   //returns the temperature from one DS18S20 in DEG Celsius
   byte data[12];
   byte addr[8];
@@ -193,12 +224,12 @@ float getTemp(){
   byte MSB = data[1];
   byte LSB = data[0];
 
-  float tempRead = ((MSB << 8) | LSB); //using two's compliment
+  float tempRead = (int16_t) ((MSB << 8) | LSB); //using two's compliment
   float TemperatureSum = tempRead / 16;
 
   Serial.print("TEMP: ");
   Serial.println(TemperatureSum);
   
-  return TemperatureSum;
+  return (int) TemperatureSum;
   
 }
