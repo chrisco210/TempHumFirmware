@@ -98,8 +98,6 @@ void powerDown() {
  */
 void do_send(osjob_t* j){
   if (!(LMIC.opmode & OP_TXRXPEND)) {
-    Serial.println("Collecting data");
-    u8x8.drawString(0, 0, "Collecting Data");
     
     //Collecting data 30 times, this ensures that the sensor is found and reads a proper value
     for(int i = 0; i < 30; i++) {
@@ -114,6 +112,8 @@ void do_send(osjob_t* j){
  * Collect data from sensors and battery and place it in the output pointer to be sent
  */
 void collectData() {
+  int temp = getTemp();
+  
   int2bytes(getTemp(), (void*) (data));
 }
 
@@ -161,6 +161,6 @@ int getTemp() {
   Serial.print("TEMP: ");
   Serial.println(TemperatureSum);
   
-  return (int) TemperatureSum;
+  return (int) (TemperatureSum * 1000);
   
 }
