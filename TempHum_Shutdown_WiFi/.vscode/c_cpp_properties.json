@@ -1,0 +1,25 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "/home/chris/Arduino/tools/**",
+                "/home/chris/Arduino/hardware/espressif/esp32/**",
+                "${workspaceFolder}/**",
+                "/home/chris/Arduino/libraries/**",
+                "/home/chris/.arduino15/packages/esp32/hardware/esp32/1.0.0/libraries/**",
+                "/opt/arduino-1.8.5/libraries/**",
+                "/opt/arduino-1.8.5/hardware/arduino/avr/libraries/**",
+                "/home/chris/.arduino15/packages/arduino/hardware/avr/1.6.21/cores/arduino",
+                "/home/chris/.arduino15/packages/esp32/hardware/esp32/1.0.0/cores/esp32"
+            ],
+            "defines": [],
+            "compilerPath": "/usr/bin/gcc",
+            "cStandard": "c11",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "clang-x64",
+            "forcedInclude": []
+        }
+    ],
+    "version": 4
+}

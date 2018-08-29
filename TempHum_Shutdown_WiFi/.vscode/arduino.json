@@ -1,0 +1,5 @@
+{
+    "sketch": "TempHum_Shutdown_WiFi.ino",
+    "board": "espressif:esp32:heltec_wifi_lora_32",
+    "configuration": "FlashFreq=80,UploadSpeed=921600,PartitionScheme=cust_bt"
+}
