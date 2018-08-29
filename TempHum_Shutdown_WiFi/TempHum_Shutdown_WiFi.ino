@@ -8,17 +8,21 @@
 #include <PubSubClient.h>
 
 /* Logging modes:
- * 0 - no logs
- * 1 - Serial only
- * 2 - OLED only
- * 3 - OLED+Serial
- */
+   0 - no logs
+   1 - Serial only
+   2 - OLED only
+   3 - OLED+Serial
+*/
 #define LOGGING_MODE 3
 
 //Mqtt names
 #define MQTT_CLIENT_NAME "Cool MQTT"
 #define MQTT_CLIENT_INTOPIC "intopic"
 #define MQTT_CLIENT_OUTTOPIC "outtopic"
+//IP of mqtt server in format xxx, xxx, xxx, xxx
+#define MQTT_SERVER_IP 127, 0, 0, 1
+//MAC address in format 0xXX, 0xXX, 0xXX, 0xXX, 0xXX, 0xXX
+#define MQTT_MAC 0xDE, 0xED, 0xBA, 0xFE, 0xFE, 0xED
 
 
 //BT Defines
@@ -45,15 +49,15 @@
 
 //Oled config
 #if LOGGING_MODE >= 2
-  #include <U8x8lib.h>
-  
-  //Logging options
-  #define U8LOG_WIDTH 16
-  #define U8LOG_HEIGHT 8   
-  
-  uint8_t u8log_buffer[U8LOG_WIDTH*U8LOG_HEIGHT];
-  U8X8LOG u8x8log;
-  U8X8_SSD1306_128X64_NONAME_SW_I2C u8x8(/* clock=*/ 15, /* data=*/ 4, /* reset=*/ 16);
+#include <U8x8lib.h>
+
+//Logging options
+#define U8LOG_WIDTH 16
+#define U8LOG_HEIGHT 8
+
+uint8_t u8log_buffer[U8LOG_WIDTH * U8LOG_HEIGHT];
+U8X8LOG u8x8log;
+U8X8_SSD1306_128X64_NONAME_SW_I2C u8x8(/* clock=*/ 15, /* data=*/ 4, /* reset=*/ 16);
 #endif
 
 //Wifi Fields
@@ -62,10 +66,9 @@ char* ssid;
 char* pwd;
 
 //MQTT Fields
-byte mac[]    = {  0xDE, 0xED, 0xBA, 0xFE, 0xFE, 0xED };
-IPAddress ip(172, 16, 0, 100);
-IPAddress server(172, 16, 0, 2);
-PubSubClient client(client);
+byte mac[] = {MQTT_MAC};
+IPAddress serverIP(MQTT_SERVER_IP);
+PubSubClient mqttClient(client);
 
 static uint8_t* data;   //Data to be sent
 
@@ -79,15 +82,18 @@ BLEService* service;
 BLEAdvertising* advert;
 
 void done();
+void log(char* string);
+void collectData();
+void powerDown();
 
 class Collector: public BLECharacteristicCallbacks {
   public:
     char** current;
-    
+
     void onWrite(BLECharacteristic *pCharacteristic) {
       std::string value = pCharacteristic->getValue();
 
-      if(current == 0) {
+      if (current == 0) {
         current = &ssid;
       } else {
         current = &pwd;
@@ -103,71 +109,75 @@ class Collector: public BLECharacteristicCallbacks {
 
       }
 
-      if(current == &pwd) {
+      if (current == &pwd) {
         done();
       }
     }
-};  
+};
 
 void setup(void) {
   pinMode(SETUP_PIN, INPUT);
 
-  #if (LOGGING_MODE == 1) || LOGGING_MODE == 3
+#if (LOGGING_MODE == 1) || LOGGING_MODE == 3
   Serial.begin(115200);
-  #endif
+#endif
 
-  #if LOGGING_MODE >= 2
+#if LOGGING_MODE >= 2
   u8x8.begin();
   u8x8.setFont(u8x8_font_chroma48medium8_r);
-  
+
   u8x8log.begin(u8x8, U8LOG_WIDTH, U8LOG_HEIGHT, u8log_buffer);
-  u8x8log.setRedrawMode(0);    // 0: Update screen with newline, 1: Update screen for every char  
-  #endif
+  u8x8log.setRedrawMode(0);    // 0: Update screen with newline, 1: Update screen for every char
+#endif
 
   log("Starting");
-  
+
   preferences.begin("wifi", false);
 
-  if(digitalRead(SETUP_PIN) == HIGH) {
+  if (digitalRead(SETUP_PIN) == HIGH) {
     log("Config start");
-  
+
     BLEDevice::init("CoolBluetoothMan");
     server = BLEDevice::createServer();
-  
+
     service = server->createService(SERVICE_UUID);
-  
+
     creds = service->createCharacteristic(CHARACTERISTIC_UUID, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE);
-  
+
     creds->setCallbacks(new Collector());
-  
+
     creds->setValue(BT_SIG_READY);
 
-    
+
     service->start();
-  
+
     advert = server->getAdvertising();
     advert->start();
   } else {
     log("Regular start");
     data = (uint8_t*) calloc(PAYLOAD_SIZE, sizeof(uint8_t));    //Allocate the required number of bytes for the payload
 
+    //Max length of ssid and password get allocated
     ssid = (char*) malloc(33);
     pwd = (char*) malloc(65);
-    
+
+    //Get ssid and password strings, and make a copy
     String ssidStr = preferences.getString(EEPROM_SSID);
     memcpy((void*) ssid, (const void*) ssidStr.c_str(), ssidStr.length() + 1);
-
-
 
     String pwdStr = preferences.getString(EEPROM_PWD);
     memcpy((void*) pwd, (const void*) pwdStr.c_str(), pwdStr.length() + 1);
 
-    log(ssid);
-    log(pwd);
+
+    //Connect to wifi
+    wifiConnect(ssid, pwd, 30000);
+
+    //Connect to mqtt
+    mqttClient.setServer(serverIP, 1883);
 
     /*
-     * PUT THE CODE TO SEND DATA TO SERVER HERE!!!
-     */
+       PUT THE CODE TO SEND DATA TO SERVER HERE!!!
+    */
     collectData();
     mqttSend();
     powerDown();
@@ -180,46 +190,46 @@ boolean wifiConnect(char* ss, char* pw, long timeout) {
 
   bool connected = true;
   unsigned long start = millis();
-  
+
   while (WiFi.status() != WL_CONNECTED) {
     unsigned long current = millis();
 
-    if(current - start > 10000) {
+    if (current - start > 10000) {
       connected = false;
       break;
     }
-    
+
     Serial.print(".");
     delay(500);
   }
   Serial.println();
-  WiFi.mode(WIFI_OFF);
 
   return connected;
 }
 
 /*
- * Send data via MQTT
- */
+   Send data via MQTT
+*/
 void mqttSend() {
 
-  while (!client.connected()) {
+  while (!mqttClient.connected()) {
     log("Attempting MQTT connection...");
-    if (client.connect(MQTT_CLIENT_NAME)) {
+    if (mqttClient.connect(MQTT_CLIENT_NAME)) {
       log("connected");
-      
-      client.publish(MQTT_CLIENT_OUTTOPIC, data);   //Publish data
-      client.subscribe(MQTT_CLIENT_INTOPIC);
+
+      mqttClient.publish(MQTT_CLIENT_OUTTOPIC, (const char*) data);   //Publish data
+      mqttClient.subscribe(MQTT_CLIENT_INTOPIC);
     } else {
       log("Failed to publish.  retrying");
-      
+
       delay(5000);
     }
   }
+}
 
 
 void loop(void) {
-  
+
 }
 
 void done() {
@@ -234,8 +244,8 @@ void done() {
   advert->stop();
   bool connected = wifiConnect(ssid, pwd, 10000);
   advert->start();
-  
-  if(connected) {
+
+  if (connected) {
     log("Connected");
     creds->setValue(BT_SIG_DONE);
 
@@ -275,12 +285,12 @@ void int2bytes(int input, void* outputLocation) {
 }
 
 void log(char* string) {
-  #if (LOGGING_MODE == 1) || (LOGGING_MODE == 3)
+#if (LOGGING_MODE == 1) || (LOGGING_MODE == 3)
   Serial.println(string);
-  #endif
-  #if LOGGING_MODE >= 2
+#endif
+#if LOGGING_MODE >= 2
   u8x8log.println(string);
-  #endif
+#endif
 }
 
 //From sensor library example, am not touching
@@ -315,7 +325,7 @@ int getTemp() {
 
   float tempRead = (int16_t) ((MSB << 8) | LSB);
   float TemperatureSum = tempRead / 16;
-  
+
   return (int) (TemperatureSum * 1000);
 
 }
