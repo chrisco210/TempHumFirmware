@@ -9,3 +9,6 @@ This is an optimzed version with a sleep fuction as well as a decreased transmis
 
 ## TempHumShutdown
 This firmware enables functionality with a external power switch, and only transmits once.  This is the "final" version of the firmware
+
+## TempHumShutdown WiFi
+This firmware does the same thing as TempHumShutdown, but uses wifi to send data
