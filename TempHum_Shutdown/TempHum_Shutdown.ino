@@ -41,6 +41,7 @@ static uint8_t* data;
 
 static osjob_t sendjob;
 
+//This does not do anything
 // Schedule TX every this many seconds (might become longer due to duty
 // cycle limitations).
 const unsigned TX_INTERVAL = 300;   //5min

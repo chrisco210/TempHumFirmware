@@ -5,6 +5,7 @@
 #include <WiFi.h>
 #include <EEPROM.h>
 #include <Preferences.h>
+#include <PubSubClient.h>
 
 /* Logging modes:
  * 0 - no logs
@@ -13,6 +14,12 @@
  * 3 - OLED+Serial
  */
 #define LOGGING_MODE 3
+
+//Mqtt names
+#define MQTT_CLIENT_NAME "Cool MQTT"
+#define MQTT_CLIENT_INTOPIC "intopic"
+#define MQTT_CLIENT_OUTTOPIC "outtopic"
+
 
 //BT Defines
 #define SERVICE_UUID        "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
@@ -49,20 +56,27 @@
   U8X8_SSD1306_128X64_NONAME_SW_I2C u8x8(/* clock=*/ 15, /* data=*/ 4, /* reset=*/ 16);
 #endif
 
+//Wifi Fields
 WiFiClient client;
-//Wifi stuff
 char* ssid;
 char* pwd;
+
+//MQTT Fields
+byte mac[]    = {  0xDE, 0xED, 0xBA, 0xFE, 0xFE, 0xED };
+IPAddress ip(172, 16, 0, 100);
+IPAddress server(172, 16, 0, 2);
+PubSubClient client(client);
+
+static uint8_t* data;   //Data to be sent
 
 OneWire ds(DS18S20_Pin);  // Temp sensor
 Preferences preferences;    //Prefs object
 
+//Bluetooth config
 BLECharacteristic* creds;
 BLEServer* server;
 BLEService* service;
 BLEAdvertising* advert;
-
-static uint8_t* data;   //Data to be sent
 
 void done();
 
@@ -154,7 +168,8 @@ void setup(void) {
     /*
      * PUT THE CODE TO SEND DATA TO SERVER HERE!!!
      */
-    delay(10000);
+    collectData();
+    mqttSend();
     powerDown();
 
   }
@@ -182,6 +197,26 @@ boolean wifiConnect(char* ss, char* pw, long timeout) {
 
   return connected;
 }
+
+/*
+ * Send data via MQTT
+ */
+void mqttSend() {
+
+  while (!client.connected()) {
+    log("Attempting MQTT connection...");
+    if (client.connect(MQTT_CLIENT_NAME)) {
+      log("connected");
+      
+      client.publish(MQTT_CLIENT_OUTTOPIC, data);   //Publish data
+      client.subscribe(MQTT_CLIENT_INTOPIC);
+    } else {
+      log("Failed to publish.  retrying");
+      
+      delay(5000);
+    }
+  }
+
 
 void loop(void) {
   
