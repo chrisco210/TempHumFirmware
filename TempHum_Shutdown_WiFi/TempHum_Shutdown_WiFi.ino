@@ -5,15 +5,24 @@
 #include <WiFi.h>
 #include <EEPROM.h>
 #include <Preferences.h>
-#include <U8x8lib.h>   
+
+//Define DISPLAY as 1 to enable display
+#define DISPLAY 1
+
+#if DISPLAY==1
+#include <U8x8lib.h>
+//Logging options
+#define U8LOG_WIDTH 16
+#define U8LOG_HEIGHT 8   
+#endif
 
 //BT Defines
 #define SERVICE_UUID        "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
 #define CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
 //BT Sig
-#define BT_SIG_READY = 1
-#define BT_SIG_DONE = 2
-#define BT_SIG_ERR = 3
+#define BT_SIG_READY "ready"
+#define BT_SIG_DONE "done"
+#define BT_SIG_ERR "err"
 
 //Pins
 #define SHUTDOWN_PIN 23   //Pin to send shutdown sig from
@@ -27,30 +36,30 @@
 #define EEPROM_SSID "ssid"
 #define EEPROM_PWD "pwd"
 
+//Oled config
+#if DISPLAY==1
+
+#include <U8x8lib.h>
 //Logging options
 #define U8LOG_WIDTH 16
-#define U8LOG_HEIGHT 8
+#define U8LOG_HEIGHT 8   
+uint8_t u8log_buffer[U8LOG_WIDTH*U8LOG_HEIGHT];
+U8X8LOG u8x8log;
+U8X8_SSD1306_128X64_NONAME_SW_I2C u8x8(/* clock=*/ 15, /* data=*/ 4, /* reset=*/ 16);
+#endif
 
-void done();
-
+WiFiClient client;
 //Wifi stuff
 char* ssid;
 char* pwd;
 
-WiFiClient client;
-
 BLECharacteristic* creds;
-
+OneWire ds(DS18S20_Pin);  // Temp sensor
 Preferences preferences;    //Prefs object
 
 static uint8_t* data;   //Data to be sent
 
-OneWire ds(DS18S20_Pin);  // Temp sensor
-
-//OLED logger
-uint8_t u8log_buffer[U8LOG_WIDTH*U8LOG_HEIGHT];
-U8X8LOG u8x8log;
-U8X8_SSD1306_128X64_NONAME_SW_I2C u8x8(/* clock=*/ 15, /* data=*/ 4, /* reset=*/ 16);
+void done();
 
 class MyCallbacks: public BLECharacteristicCallbacks {
   public:
@@ -85,11 +94,13 @@ void setup(void) {
   pinMode(SETUP_PIN, INPUT);
   Serial.begin(115200);
 
+  #if DISPLAY==1
   u8x8.begin();
   u8x8.setFont(u8x8_font_chroma48medium8_r);
   
   u8x8log.begin(u8x8, U8LOG_WIDTH, U8LOG_HEIGHT, u8log_buffer);
   u8x8log.setRedrawMode(0);    // 0: Update screen with newline, 1: Update screen for every char  
+  #endif
 
   log("Starting");
   
@@ -179,7 +190,7 @@ void done() {
   if(connected) {
     log("Connected");
     Serial.println(WiFi.localIP());
-    creds->setValue(BT_SIG_OK);
+    creds->setValue(BT_SIG_DONE);
     log("Writing");
     
     preferences.putString(EEPROM_SSID, ssid);
@@ -219,7 +230,9 @@ void int2bytes(int input, void* outputLocation) {
 
 void log(char* string) {
   Serial.println(string);
+  #if DISPLAY==1
   u8x8log.println(string);
+  #endif
 }
 
 //From sensor library example, am not touching
