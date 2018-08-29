@@ -6,22 +6,22 @@
 #include <EEPROM.h>
 #include <Preferences.h>
 
-//Define DISPLAY as 1 to enable display
-#define DISPLAY 1
-
-#if DISPLAY==1
-#include <U8x8lib.h>
-//Logging options
-#define U8LOG_WIDTH 16
-#define U8LOG_HEIGHT 8   
-#endif
+/* Logging modes:
+ * 0 - no logs
+ * 1 - Serial only
+ * 2 - OLED only
+ * 3 - OLED+Serial
+ */
+#define LOGGING_MODE 3
 
 //BT Defines
 #define SERVICE_UUID        "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
 #define CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
+
 //BT Sig
 #define BT_SIG_READY "ready"
 #define BT_SIG_DONE "done"
+#define BT_SIG_RECEIVED "rec"
 #define BT_SIG_ERR "err"
 
 //Pins
@@ -37,15 +37,16 @@
 #define EEPROM_PWD "pwd"
 
 //Oled config
-#if DISPLAY==1
-
-#include <U8x8lib.h>
-//Logging options
-#define U8LOG_WIDTH 16
-#define U8LOG_HEIGHT 8   
-uint8_t u8log_buffer[U8LOG_WIDTH*U8LOG_HEIGHT];
-U8X8LOG u8x8log;
-U8X8_SSD1306_128X64_NONAME_SW_I2C u8x8(/* clock=*/ 15, /* data=*/ 4, /* reset=*/ 16);
+#if LOGGING_MODE >= 2
+  #include <U8x8lib.h>
+  
+  //Logging options
+  #define U8LOG_WIDTH 16
+  #define U8LOG_HEIGHT 8   
+  
+  uint8_t u8log_buffer[U8LOG_WIDTH*U8LOG_HEIGHT];
+  U8X8LOG u8x8log;
+  U8X8_SSD1306_128X64_NONAME_SW_I2C u8x8(/* clock=*/ 15, /* data=*/ 4, /* reset=*/ 16);
 #endif
 
 WiFiClient client;
@@ -53,15 +54,19 @@ WiFiClient client;
 char* ssid;
 char* pwd;
 
-BLECharacteristic* creds;
 OneWire ds(DS18S20_Pin);  // Temp sensor
 Preferences preferences;    //Prefs object
+
+BLECharacteristic* creds;
+BLEServer* server;
+BLEService* service;
+BLEAdvertising* advert;
 
 static uint8_t* data;   //Data to be sent
 
 void done();
 
-class MyCallbacks: public BLECharacteristicCallbacks {
+class Collector: public BLECharacteristicCallbacks {
   public:
     char** current;
     
@@ -92,9 +97,12 @@ class MyCallbacks: public BLECharacteristicCallbacks {
 
 void setup(void) {
   pinMode(SETUP_PIN, INPUT);
-  Serial.begin(115200);
 
-  #if DISPLAY==1
+  #if (LOGGING_MODE == 1) || LOGGING_MODE == 3
+  Serial.begin(115200);
+  #endif
+
+  #if LOGGING_MODE >= 2
   u8x8.begin();
   u8x8.setFont(u8x8_font_chroma48medium8_r);
   
@@ -106,28 +114,25 @@ void setup(void) {
   
   preferences.begin("wifi", false);
 
-  Serial.println(EEPROM.length());
   if(digitalRead(SETUP_PIN) == HIGH) {
     log("Config start");
   
     BLEDevice::init("CoolBluetoothMan");
-    BLEServer* pServer = BLEDevice::createServer();
+    server = BLEDevice::createServer();
   
-    BLEService* pService = pServer->createService(SERVICE_UUID);
+    service = server->createService(SERVICE_UUID);
   
-    creds = pService->createCharacteristic(
-                                           CHARACTERISTIC_UUID,
-                                           BLECharacteristic::PROPERTY_READ |
-                                           BLECharacteristic::PROPERTY_WRITE
-                                         );
+    creds = service->createCharacteristic(CHARACTERISTIC_UUID, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE);
   
-    creds->setCallbacks(new MyCallbacks());
+    creds->setCallbacks(new Collector());
   
     creds->setValue(BT_SIG_READY);
-    pService->start();
+
+    
+    service->start();
   
-    BLEAdvertising* pAdvertising = pServer->getAdvertising();
-    pAdvertising->start();
+    advert = server->getAdvertising();
+    advert->start();
   } else {
     log("Regular start");
     data = (uint8_t*) calloc(PAYLOAD_SIZE, sizeof(uint8_t));    //Allocate the required number of bytes for the payload
@@ -146,6 +151,9 @@ void setup(void) {
     log(ssid);
     log(pwd);
 
+    /*
+     * PUT THE CODE TO SEND DATA TO SERVER HERE!!!
+     */
     delay(10000);
     powerDown();
 
@@ -170,6 +178,7 @@ boolean wifiConnect(char* ss, char* pw, long timeout) {
     delay(500);
   }
   Serial.println();
+  WiFi.mode(WIFI_OFF);
 
   return connected;
 }
@@ -184,20 +193,22 @@ void done() {
   log("PWD:");
   log(pwd);
 
+  creds->setValue(BT_SIG_RECEIVED);
+
   log("Connecting");
+  advert->stop();
   bool connected = wifiConnect(ssid, pwd, 10000);
+  advert->start();
   
   if(connected) {
     log("Connected");
-    Serial.println(WiFi.localIP());
     creds->setValue(BT_SIG_DONE);
+
     log("Writing");
-    
     preferences.putString(EEPROM_SSID, ssid);
     preferences.putString(EEPROM_PWD, pwd);
     preferences.end();
     log("Done");
-    
   } else {
     log("Failed to connect");
     creds->setValue(BT_SIG_ERR);
@@ -229,8 +240,10 @@ void int2bytes(int input, void* outputLocation) {
 }
 
 void log(char* string) {
+  #if (LOGGING_MODE == 1) || (LOGGING_MODE == 3)
   Serial.println(string);
-  #if DISPLAY==1
+  #endif
+  #if LOGGING_MODE >= 2
   u8x8log.println(string);
   #endif
 }
