@@ -15,18 +15,14 @@ This firmware does the same thing as TempHumShutdown, but uses wifi to send data
 ### Building
 The sketch is too large to fit on the default HelTec esp32 partition, so a custom partition must be used.  To create the custom partition, first navigate to wher4e the esp32 partition configurations are stored (On my installation, this was located in ~/.arduino15/packages/esp32/hardware/esp32/1.0.0/tools/partitions).  Then make a backup of the default.csv file.  After making the backup, update the default.csv file to the following:
 
+```
 #Name,   Type, SubType, Offset,  Size, Flags
-
 nvs,      data, nvs,     0x9000,  0x5000,
-
 otadata,  data, ota,     0xe000,  0x2000,
-
 app0,     app,  ota_0,   0x10000, 0x200000,
-
 eeprom,   data, 0x99,    0x210000,  0x2000,
-
 spiffs,   data, spiffs,  0x212000,0x1EE000,
-
+```
 This partition configuration provides more space to the app0 partition by reducing the size of the spiffs partition.
 
 
